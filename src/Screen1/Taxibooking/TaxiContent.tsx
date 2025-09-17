@@ -138,6 +138,8 @@ interface DriverType {
 
 interface TaxiContentProps {
   loadingLocation?: boolean;
+  currentLocation: LocationType | null;
+  lastSavedLocation: LocationType | null;
   pickup: string;
   dropoff: string;
   handlePickupChange: (text: string) => void;
@@ -146,6 +148,8 @@ interface TaxiContentProps {
 
 const TaxiContent: React.FC<TaxiContentProps> = ({
   loadingLocation: propLoadingLocation,
+  currentLocation: propCurrentLocation,
+  lastSavedLocation: propLastSavedLocation,
   pickup,
   dropoff,
   handlePickupChange: propHandlePickupChange,
@@ -193,6 +197,12 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
   
   const panelAnimation = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<MapView | null>(null);
+
+  // Fallback location
+  const fallbackLocation: LocationType = {
+    latitude: 11.3312971,
+    longitude: 77.7167303,
+  };
 
   // Calculate distance between two coordinates
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
@@ -280,24 +290,66 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
   useEffect(() => {
     const requestLocation = async () => {
       setIsLoadingLocation(true);
+
+      // Use propCurrentLocation if available
+      if (propCurrentLocation) {
+        console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using current location from props:`, propCurrentLocation);
+        setLocation(propCurrentLocation);
+        setPickupLocation(propCurrentLocation);
+        propHandlePickupChange("My Current Location");
+        setIsPickupCurrent(true);
+        // Store location globally for socket connection
+        global.currentLocation = propCurrentLocation;
+        // Fetch nearby drivers after getting location
+        fetchNearbyDrivers(propCurrentLocation.latitude, propCurrentLocation.longitude);
+        setIsLoadingLocation(false);
+        return;
+      }
+
+      // Use propLastSavedLocation as fallback if no current location
+      if (propLastSavedLocation) {
+        console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using last saved location from props:`, propLastSavedLocation);
+        setLocation(propLastSavedLocation);
+        setPickupLocation(propLastSavedLocation);
+        propHandlePickupChange("My Current Location");
+        setIsPickupCurrent(true);
+        // Store location globally for socket connection
+        global.currentLocation = propLastSavedLocation;
+        // Fetch nearby drivers after getting location
+        fetchNearbyDrivers(propLastSavedLocation.latitude, propLastSavedLocation.longitude);
+        setIsLoadingLocation(false);
+        return;
+      }
+
+      // Fallback to hardcoded location if neither prop is available
+      console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using fallback location:`, fallbackLocation);
+      setLocation(fallbackLocation);
+      setPickupLocation(fallbackLocation);
+      propHandlePickupChange("My Current Location");
+      setIsPickupCurrent(true);
+      // Store location globally for socket connection
+      global.currentLocation = fallbackLocation;
+      // Fetch nearby drivers after getting location
+      fetchNearbyDrivers(fallbackLocation.latitude, fallbackLocation.longitude);
+      setIsLoadingLocation(false);
+
+      // Request permission and attempt to fetch live location
       if (Platform.OS === "android") {
         const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
           console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Location permission denied`);
           Alert.alert("Permission Denied", "Location permission is required to proceed.");
-          setIsLoadingLocation(false);
           return;
         }
       }
       Geolocation.getCurrentPosition(
         (pos) => {
           const loc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-          console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Location fetched successfully:`, loc);
+          console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Live location fetched successfully:`, loc);
           setLocation(loc);
           setPickupLocation(loc);
           propHandlePickupChange("My Current Location");
           setIsPickupCurrent(true);
-          setIsLoadingLocation(false);
           
           // Store location globally for socket connection
           global.currentLocation = loc;
@@ -307,19 +359,18 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
         },
         (err) => {
           console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Location error:`, err.code, err.message);
-          setIsLoadingLocation(false);
           Alert.alert("Location Error", "Could not fetch location. Please try again or check your GPS settings.");
         },
         {
-          enableHighAccuracy: true,
+          enableHighAccuracy: false,
           timeout: 15000,
-          maximumAge: 10000,
+          maximumAge: 300000,
           distanceFilter: 10,
         }
       );
     };
     requestLocation();
-  }, []);
+  }, [propCurrentLocation, propLastSavedLocation]);
 
   // Update the useEffect for socket connection
   useEffect(() => {
@@ -372,7 +423,7 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
           (err) => {
             console.error("Live location error:", err);
           },
-          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
         );
       }
     }, 5000);

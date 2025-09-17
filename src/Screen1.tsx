@@ -11,6 +11,7 @@ import {
   TextInput,
   Dimensions,
   Platform,
+  PermissionsAndroid,
 } from 'react-native';
 import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 import FontAwesome from 'react-native-vector-icons/FontAwesome';
@@ -85,7 +86,7 @@ export default function Screen1() {
   const [showDropoffSuggestions, setShowDropoffSuggestions] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [lastSavedLocation, setLastSavedLocation] = useState<Location | null>(null);
-  const [loadingLocation, setLoadingLocation] = useState(true);
+  const [loadingLocation, setLoadingLocation] = useState(false); // Changed to false initially
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState(route.params?.phone || '');
@@ -119,6 +120,30 @@ export default function Screen1() {
       location: `${baseUrl}/api/users/location`,
       logout: `${baseUrl}/api/auth/logout`,
     };
+  };
+  
+  // Request location permission for Android
+  const requestLocationPermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          {
+            title: 'Location Access Required',
+            message: 'This app needs access to your location to provide taxi services.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn('Permission request error:', err);
+        return false;
+      }
+    }
+    // For iOS, permissions are handled by the geolocation library and Info.plist
+    return true;
   };
   
   // Fetch user data
@@ -345,75 +370,93 @@ const handleLogout = async () => {
     }
   };
   
-  const getCurrentLocation = () => {
-    setLoadingLocation(true);
-    Geolocation.getCurrentPosition(
-      async (position) => {
-        const coords = { 
-          latitude: position.coords.latitude, 
-          longitude: position.coords.longitude 
-        };
-        console.log('📍 Got current location:', coords);
-        setCurrentLocation(coords);
-        setPickup('My Current Location');
-        
-        try {
-          const urls = getBackendUrls();
-          
-          console.log('🌐 Frontend to send location code:', {
-            latitude: coords.latitude,
-            longitude: coords.longitude,
-          });
-          
-          await axios.post(urls.location, coords, { 
-            headers: { 
-              'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
-              'Content-Type': 'application/json' 
-            }
-          });
-          console.log('✅ Location sent to backend successfully');
-        } catch (err: any) {
-          console.log('❌ Error sending location:', err.message);
-        } finally {
-          setLoadingLocation(false);
-        }
-      },
-      (error) => {
-        console.log('❌ Location Error:', error.message);
-        setLoadingLocation(false);
-        Alert.alert('Location Error', 'Could not get your current location. Please check your permissions.');
-      },
-      { 
-        enableHighAccuracy: true, 
-        timeout: 15000, 
-        maximumAge: 10000,
-        showLocationDialog: true
+  // Get current location - simplified version
+  const getCurrentLocation = async () => {
+    try {
+      // Request location permission first
+      const hasPermission = await requestLocationPermission();
+      if (!hasPermission) {
+        console.log('❌ Location permission denied');
+        return;
       }
-    );
+
+      // Prepare options
+      const options: any = {
+        enableHighAccuracy: false, // Changed to false for faster response
+        timeout: 10000, // Reduced timeout
+        maximumAge: 300000, // Accept 5-minute old locations
+      };
+
+      // iOS-specific option
+      if (Platform.OS === 'ios') {
+        options.showLocationDialog = true;
+      }
+
+      Geolocation.getCurrentPosition(
+        async (position) => {
+          const coords = { 
+            latitude: position.coords.latitude, 
+            longitude: position.coords.longitude 
+          };
+          console.log('📍 App open location:', coords);
+          setCurrentLocation(coords); // Set the current location state
+          setPickup('My Current Location');
+          
+          try {
+            const urls = getBackendUrls();
+            const token = await AsyncStorage.getItem('authToken') || await AsyncStorage.getItem('userToken');
+            
+            await axios.post(urls.location, coords, { 
+              headers: { 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json' 
+              }
+            });
+            console.log('✅ Location sent to backend successfully');
+          } catch (err: any) {
+            console.log('❌ Error sending location:', err.message);
+          }
+        },
+        (error) => {
+          console.log('❌ Location Error:', error.message);
+          // Try to get last known location if current location fails
+          fetchLastLocation();
+        },
+        options
+      );
+    } catch (error) {
+      console.log('❌ Error in getCurrentLocation:', error);
+    }
   };
-  
+
+  // Fetch last location - simplified version
   const fetchLastLocation = async () => {
     try {
       const urls = getBackendUrls();
+      const token = await AsyncStorage.getItem('authToken') || await AsyncStorage.getItem('userToken');
       
       const res = await axios.get(urls.location + '/last', {
         headers: {
-          'Authorization': `Bearer ${await AsyncStorage.getItem('authToken')}`,
+          'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
       });
-      setLastSavedLocation(res.data.location || res.data);
-      console.log('📍 Last location fetched:', res.data.location || res.data);
+      const location = res.data.location || res.data;
+      setLastSavedLocation(location);
+      if (!currentLocation) { // Only set pickup if we don't have a current location
+        setCurrentLocation(location);
+        setPickup('Last Known Location');
+      }
+      console.log('📍 App open last location:', location);
     } catch (err: any) {
       console.log('❌ Error fetching last location:', err.message);
-    } finally {
-      setLoadingLocation(false);
     }
   };
-  
+
   // Effect for location-related functions
   useEffect(() => {
     if (Object.keys(backendUrls).length > 0) {
+      // Run location fetching silently without loading indicators
       getCurrentLocation();
       fetchLastLocation();
     }
