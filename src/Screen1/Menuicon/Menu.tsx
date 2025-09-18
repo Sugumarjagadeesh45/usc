@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, TouchableOpacity, Platform, Text, ScrollView, ActivityIndicator, Dimensions } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import Feather from 'react-native-vector-icons/Feather';
@@ -19,12 +19,14 @@ interface MenuProps {
   toggleMenu: () => void;
   handleLogout: () => Promise<void>;
 }
+
 interface Payment {
   dateTime: string;
   amount: number;
   reason: string;
   status: string;
 }
+
 interface Travel {
   id: string;
   dateTime: string;
@@ -33,32 +35,33 @@ interface Travel {
   status: string;
 }
 
-const Menu: React.FC<MenuProps> = ({ 
-  name, 
-  phoneNumber, 
+const Menu: React.FC<MenuProps> = ({
+  name,
+  phoneNumber,
   profilePicture,
   customerId,
-  toggleMenu, 
+  toggleMenu,
   handleLogout,
 }) => {
   const navigation = useNavigation();
   const { t } = useTranslation();
   const [userName, setUserName] = useState(name);
   const [userPhone, setUserPhone] = useState(phoneNumber);
-  const [userProfilePicture, setUserProfilePicture] = useState(profilePicture);
-
-  // --- New state for full page views ---
+  const [userProfilePicture, setUserProfilePicture] = useState<string | undefined>(profilePicture);
   const [activePage, setActivePage] = useState<'menu' | 'payment' | 'travel'>('menu');
-
   const [payments, setPayments] = useState<Payment[]>([]);
   const [travels, setTravels] = useState<Travel[]>([]);
   const [loadingTravels, setLoadingTravels] = useState(false);
 
+  // Construct full profile picture URL
+  const baseUrl = getBackendUrl();
+  const fullProfilePicture = profilePicture ? `${baseUrl}${profilePicture}` : undefined;
+
   useEffect(() => {
     setUserName(name);
     setUserPhone(phoneNumber);
-    setUserProfilePicture(profilePicture);
-  }, [name, phoneNumber, profilePicture]);
+    setUserProfilePicture(fullProfilePicture);
+  }, [name, phoneNumber, fullProfilePicture]);
 
   const handleProfileUpdate = (newName: string, newPhone: string) => {
     setUserName(newName);
@@ -96,7 +99,6 @@ const Menu: React.FC<MenuProps> = ({
     }
   };
 
-  // ✅ Render Payment Page (FULL WIDTH)
   const renderPaymentPage = () => (
     <View style={styles.fullPageContainer}>
       <View style={styles.pageHeader}>
@@ -106,7 +108,6 @@ const Menu: React.FC<MenuProps> = ({
         <Text style={styles.pageTitle}>{t('paymentHistory')}</Text>
         <View style={styles.headerRight} />
       </View>
-
       <ScrollView style={styles.fullPageScrollView}>
         <View style={styles.tableContainer}>
           <View style={styles.tableHeader}>
@@ -115,16 +116,25 @@ const Menu: React.FC<MenuProps> = ({
             <Text style={[styles.tableHeaderText, { flex: 2 }]}>{t('reason')}</Text>
             <Text style={[styles.tableHeaderText, { flex: 1 }]}>{t('status')}</Text>
           </View>
-
           {payments.map((payment, index) => (
             <View key={index} style={styles.tableRow}>
               <Text style={[styles.tableCell, { flex: 2 }]}>{payment.dateTime}</Text>
               <Text style={[styles.tableCell, { flex: 1 }]}>₹{payment.amount}</Text>
               <Text style={[styles.tableCell, { flex: 2 }]}>{payment.reason}</Text>
-              <Text style={[styles.tableCell, { 
-                flex: 1, 
-                color: payment.status === 'Paid' ? '#28a745' : payment.status === 'Processing' ? '#ffc107' : '#dc3545' 
-              }]}>
+              <Text
+                style={[
+                  styles.tableCell,
+                  { flex: 1 },
+                  {
+                    color:
+                      payment.status === 'Paid'
+                        ? '#28a745'
+                        : payment.status === 'Processing'
+                        ? '#ffc107'
+                        : '#dc3545',
+                  },
+                ]}
+              >
                 {payment.status}
               </Text>
             </View>
@@ -134,7 +144,6 @@ const Menu: React.FC<MenuProps> = ({
     </View>
   );
 
-  // ✅ Render Travel Page (FULL WIDTH)
   const renderTravelPage = () => (
     <View style={styles.fullPageContainer}>
       <View style={styles.pageHeader}>
@@ -144,7 +153,6 @@ const Menu: React.FC<MenuProps> = ({
         <Text style={styles.pageTitle}>{t('travelHistory')}</Text>
         <View style={styles.headerRight} />
       </View>
-
       {loadingTravels ? (
         <View style={styles.fullPageLoadingContainer}>
           <ActivityIndicator size="large" color="#28a745" />
@@ -169,10 +177,13 @@ const Menu: React.FC<MenuProps> = ({
                 <Text style={[styles.tableCell, { flex: 2 }]}>{travel.dateTime}</Text>
                 <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{travel.pickup}</Text>
                 <Text style={[styles.tableCell, { flex: 2 }]} numberOfLines={1}>{travel.destination}</Text>
-                <Text style={[styles.tableCell, { 
-                  flex: 1, 
-                  color: travel.status === 'Completed' ? '#28a745' : '#dc3545' 
-                }]}>
+                <Text
+                  style={[
+                    styles.tableCell,
+                    { flex: 1 },
+                    { color: travel.status === 'Completed' ? '#28a745' : '#dc3545' },
+                  ]}
+                >
                   {travel.status}
                 </Text>
               </View>
@@ -183,30 +194,26 @@ const Menu: React.FC<MenuProps> = ({
     </View>
   );
 
-  // ✅ Render Menu Page
   const renderMenuPage = () => (
     <View style={styles.menuContainer}>
       <View style={styles.menuHeader}>
         <TouchableOpacity onPress={toggleMenu}>
-          <Ionicons name="arrow-back" size={24} color='#343a40' />
+          <Ionicons name="arrow-back" size={24} color="#343a40" />
         </TouchableOpacity>
         <Text style={styles.menuTitle}>{t('menu')}</Text>
       </View>
-      
       <ScrollView showsVerticalScrollIndicator={false}>
-        <ProfileSection 
+        <ProfileSection
           name={userName}
           phoneNumber={userPhone}
           customerId={customerId}
           profilePicture={userProfilePicture}
         />
-        
         <WalletSection />
         <View style={styles.menuDivider} />
-
-        <MenuItem 
-          icon="payment" 
-          text={t('payment')} 
+        <MenuItem
+          icon="payment"
+          text={t('payment')}
           onPress={() => {
             setPayments([
               { dateTime: '10-09-25 03:15 PM', amount: 500, reason: 'Ride Booking', status: 'Paid' },
@@ -217,19 +224,16 @@ const Menu: React.FC<MenuProps> = ({
             setActivePage('payment');
           }}
         />
-
-        <MenuItem 
-          icon="history" 
-          text={t('myTravelHistory')} 
+        <MenuItem
+          icon="history"
+          text={t('myTravelHistory')}
           onPress={() => {
             fetchTravelHistory();
             setActivePage('travel');
           }}
         />
-
         <MenuItem icon="settings" text={t('settings')} onPress={navigateToSettings} />
         <MenuItem icon="logout" text={t('logout')} onPress={handleLogout} />
-        
         <View style={styles.menuDivider} />
         <View style={styles.menuFooter}>
           <Text style={styles.footerText}>App Version 1.0.0</Text>
@@ -239,7 +243,6 @@ const Menu: React.FC<MenuProps> = ({
     </View>
   );
 
-  // ✅ Switch between pages
   if (activePage === 'payment') return renderPaymentPage();
   if (activePage === 'travel') return renderTravelPage();
   return renderMenuPage();
@@ -270,7 +273,6 @@ const styles = StyleSheet.create({
     marginLeft: 20,
     fontFamily: 'System',
   },
-  // FULL PAGE STYLES
   fullPageContainer: {
     flex: 1,
     width: Dimensions.get('window').width,
@@ -315,7 +317,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-  // TABLE STYLES
   tableContainer: {
     backgroundColor: '#fff',
     borderRadius: 10,
@@ -349,7 +350,6 @@ const styles = StyleSheet.create({
     color: '#343a40',
     textAlign: 'left',
   },
-  // COMMON STYLES
   menuDivider: {
     height: 1,
     backgroundColor: '#e9ecef',

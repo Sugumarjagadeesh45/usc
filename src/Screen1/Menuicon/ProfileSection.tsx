@@ -1,4 +1,3 @@
-// D:\newapp\userapp-main 2\userapp-main\src\Screen1\Menuicon\ProfileSection.tsx
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import Feather from 'react-native-vector-icons/Feather';
@@ -12,38 +11,35 @@ interface ProfileSectionProps {
   profilePicture?: string;
 }
 
-const ProfileSection: React.FC<ProfileSectionProps> = ({ 
-  name, 
-  phoneNumber, 
+const ProfileSection: React.FC<ProfileSectionProps> = ({
+  name,
+  phoneNumber,
   customerId,
-  profilePicture 
+  profilePicture,
 }) => {
   const navigation = useNavigation();
-  
+
   const handlePress = () => {
     console.log('ProfileSection - Profile picture:', profilePicture ? 'Provided' : 'No profile picture provided');
     console.log('📋 Navigating with customerId:', customerId);
-    
+
     navigation.navigate('ProfileScreen', {
       name,
       phoneNumber,
       customerId,
-      profilePicture
+      profilePicture,
     });
   };
 
   return (
-    <TouchableOpacity 
-      style={styles.profileSection} 
-      onPress={handlePress}
-      activeOpacity={0.7}
-    >
+    <TouchableOpacity style={styles.profileSection} onPress={handlePress} activeOpacity={0.7}>
       <View style={styles.profileIcon}>
         {profilePicture ? (
-          <Image 
-            source={{ uri: profilePicture }} 
-            style={styles.profileImage} 
-            onError={(e) => console.error('Image load error:', e.nativeEvent.error)}
+          <Image
+            source={{ uri: profilePicture }}
+            style={styles.profileImage}
+            onError={(e) => console.error('Image load error:', e.nativeEvent.error, 'URL:', profilePicture)}
+            onLoad={() => console.log('Image loaded successfully:', profilePicture)}
           />
         ) : (
           <FontAwesome name="user" size={24} color="#28a745" />
@@ -65,7 +61,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     padding: 10,
     borderRadius: 8,
-    backgroundColor: '#F8F9FA'
+    backgroundColor: '#F8F9FA',
   },
   profileIcon: {
     backgroundColor: '#D3D3D3',
@@ -75,7 +71,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 15,
-    overflow: 'hidden'
+    overflow: 'hidden',
   },
   profileImage: {
     width: '100%',

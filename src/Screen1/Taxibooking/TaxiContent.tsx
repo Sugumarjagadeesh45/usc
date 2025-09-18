@@ -1,3 +1,4 @@
+// D:\newapp\userapp-main 2\userapp-main\src\Screen1\Taxibooking\TaxiContent.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -26,7 +27,7 @@ import Svg, { Path, Circle, Rect } from 'react-native-svg';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getBackendUrl } from '../../util/backendConfig';
 
-// Professional SVG icons (unchanged)
+// Professional SVG icons
 const TaxiIcon = ({ color = '#000000', size = 24 }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24">
     <Path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99z" fill={color} />
@@ -62,7 +63,6 @@ const BikeIcon = ({ color = '#000000', size = 24 }) => (
   </Svg>
 );
 
-// RideTypeSelector component (unchanged)
 const RideTypeSelector = ({ selectedRideType, setSelectedRideType }) => {
   return (
     <View style={styles.rideTypeContainer}>
@@ -198,15 +198,13 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
   const panelAnimation = useRef(new Animated.Value(0)).current;
   const mapRef = useRef<MapView | null>(null);
 
-  // Fallback location
   const fallbackLocation: LocationType = {
     latitude: 11.3312971,
     longitude: 77.7167303,
   };
 
-  // Calculate distance between two coordinates
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-    const R = 6371; // Radius of the Earth in km
+    const R = 6371;
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
     const a = 
@@ -218,21 +216,19 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     return distance;
   };
 
-  // Update the fetchNearbyDrivers function
   const fetchNearbyDrivers = (latitude: number, longitude: number) => {
     console.log(`Fetching nearby drivers for lat: ${latitude}, lng: ${longitude}`);
     if (socket && socketConnected) {
       socket.emit("requestNearbyDrivers", { 
         latitude, 
         longitude, 
-        radius: 10000, // Increased radius to 10km
+        radius: 10000,
         vehicleType: selectedRideType 
       });
       console.log("Emitted requestNearbyDrivers event");
     } else {
       console.log("Socket not connected, attempting to reconnect...");
       socket.connect();
-      // Retry after connection
       socket.once("connect", () => {
         console.log("Socket reconnected, emitting requestNearbyDrivers");
         socket.emit("requestNearbyDrivers", { 
@@ -245,7 +241,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     }
   };
 
-  // Update the useEffect for nearby drivers response
   useEffect(() => {
     const handleNearbyDriversResponse = (data: { drivers: DriverType[] }) => {
       console.log('Received nearby drivers response:', JSON.stringify(data, null, 2));
@@ -254,24 +249,20 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
         return;
       }
       
-      console.log('Processing drivers...');
       const filteredDrivers = data.drivers
         .filter(driver => {
-          // Less restrictive status filtering
           if (driver.status && !["Live", "online", "onRide", "available"].includes(driver.status)) {
             console.log(`Driver ${driver.driverId} filtered out by status: ${driver.status}`);
             return false;
           }
-          
           const distance = calculateDistance(
             location.latitude,
             location.longitude,
             driver.location.coordinates[1],
             driver.location.coordinates[0]
           );
-          
           console.log(`Driver ${driver.driverId} distance: ${distance.toFixed(2)} km`);
-          return distance <= 10; // Increased radius to 10km
+          return distance <= 10;
         })
         .sort((a, b) => calculateDistance(location.latitude, location.longitude, a.location.coordinates[1], a.location.coordinates[0]) -
                          calculateDistance(location.latitude, location.longitude, b.location.coordinates[1], b.location.coordinates[0]))
@@ -286,54 +277,43 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     return () => socket.off("nearbyDriversResponse", handleNearbyDriversResponse);
   }, [location, socketConnected]);
 
-  // Update the useEffect for initial location
   useEffect(() => {
     const requestLocation = async () => {
       setIsLoadingLocation(true);
 
-      // Use propCurrentLocation if available
       if (propCurrentLocation) {
         console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using current location from props:`, propCurrentLocation);
         setLocation(propCurrentLocation);
         setPickupLocation(propCurrentLocation);
         propHandlePickupChange("My Current Location");
         setIsPickupCurrent(true);
-        // Store location globally for socket connection
         global.currentLocation = propCurrentLocation;
-        // Fetch nearby drivers after getting location
         fetchNearbyDrivers(propCurrentLocation.latitude, propCurrentLocation.longitude);
         setIsLoadingLocation(false);
         return;
       }
 
-      // Use propLastSavedLocation as fallback if no current location
       if (propLastSavedLocation) {
         console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using last saved location from props:`, propLastSavedLocation);
         setLocation(propLastSavedLocation);
         setPickupLocation(propLastSavedLocation);
         propHandlePickupChange("My Current Location");
         setIsPickupCurrent(true);
-        // Store location globally for socket connection
         global.currentLocation = propLastSavedLocation;
-        // Fetch nearby drivers after getting location
         fetchNearbyDrivers(propLastSavedLocation.latitude, propLastSavedLocation.longitude);
         setIsLoadingLocation(false);
         return;
       }
 
-      // Fallback to hardcoded location if neither prop is available
       console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Using fallback location:`, fallbackLocation);
       setLocation(fallbackLocation);
       setPickupLocation(fallbackLocation);
       propHandlePickupChange("My Current Location");
       setIsPickupCurrent(true);
-      // Store location globally for socket connection
       global.currentLocation = fallbackLocation;
-      // Fetch nearby drivers after getting location
       fetchNearbyDrivers(fallbackLocation.latitude, fallbackLocation.longitude);
       setIsLoadingLocation(false);
 
-      // Request permission and attempt to fetch live location
       if (Platform.OS === "android") {
         const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
         if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
@@ -350,53 +330,27 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
           setPickupLocation(loc);
           propHandlePickupChange("My Current Location");
           setIsPickupCurrent(true);
-          
-          // Store location globally for socket connection
           global.currentLocation = loc;
-          
-          // Fetch nearby drivers after getting location
           fetchNearbyDrivers(loc.latitude, loc.longitude);
         },
         (err) => {
           console.log(`[${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}] Location error:`, err.code, err.message);
           Alert.alert("Location Error", "Could not fetch location. Please try again or check your GPS settings.");
         },
-        {
-          enableHighAccuracy: false,
-          timeout: 15000,
-          maximumAge: 300000,
-          distanceFilter: 10,
-        }
+        { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000, distanceFilter: 10 }
       );
     };
     requestLocation();
   }, [propCurrentLocation, propLastSavedLocation]);
 
-  // Update the useEffect for socket connection
   useEffect(() => {
-    const handleConnect = () => {
-      console.log("Socket connected");
-      setSocketConnected(true);
-      if (location) {
-        fetchNearbyDrivers(location.latitude, location.longitude);
-      }
-    };
-    
-    const handleDisconnect = () => {
-      console.log("Socket disconnected");
-      setSocketConnected(false);
-    };
-    
-    const handleConnectError = (error: Error) => {
-      console.error("Socket connection error:", error);
-      setSocketConnected(false);
-    };
+    const handleConnect = () => { console.log("Socket connected"); setSocketConnected(true); if (location) fetchNearbyDrivers(location.latitude, location.longitude); };
+    const handleDisconnect = () => { console.log("Socket disconnected"); setSocketConnected(false); };
+    const handleConnectError = (error: Error) => { console.error("Socket connection error:", error); setSocketConnected(false); };
     
     socket.on("connect", handleConnect);
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleConnectError);
-    
-    // Check initial connection state
     setSocketConnected(socket.connected);
     
     return () => {
@@ -406,7 +360,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     };
   }, [location]);
 
-  // Update location periodically
   useEffect(() => {
     const interval = setInterval(() => {
       if (location && (rideStatus === "idle" || rideStatus === "searching")) {
@@ -420,9 +373,7 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             }
             fetchNearbyDrivers(newLoc.latitude, newLoc.longitude);
           },
-          (err) => {
-            console.error("Live location error:", err);
-          },
+          (err) => { console.error("Live location error:", err); },
           { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 }
         );
       }
@@ -430,16 +381,13 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     return () => clearInterval(interval);
   }, [rideStatus, isPickupCurrent, dropoffLocation, location, socketConnected]);
 
-  // Handle real-time driver location updates
   useEffect(() => {
     const handleDriverLiveLocationUpdate = (data: { driverId: string; lat: number; lng: number; status?: string }) => {
       if (!location) return;
-      
       if (data.driverId.includes('BOT')) return;
       
       setNearbyDrivers((prev) => {
         const existingIndex = prev.findIndex(d => d.driverId === data.driverId);
-        
         if (existingIndex >= 0) {
           const updated = [...prev];
           updated[existingIndex] = {
@@ -450,7 +398,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
           return updated;
         } else {
           if (data.status && !["Live", "online", "onRide", "available"].includes(data.status)) return prev;
-          
           return [
             ...prev,
             {
@@ -469,7 +416,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     return () => socket.off("driverLiveLocationUpdate", handleDriverLiveLocationUpdate);
   }, [location]);
 
-  // Handle driver offline events
   useEffect(() => {
     const handleDriverOffline = (data: { driverId: string }) => {
       console.log(`Driver ${data.driverId} went offline`);
@@ -481,31 +427,23 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     return () => socket.off("driverOffline", handleDriverOffline);
   }, []);
 
-  // Handle driver status updates
   useEffect(() => {
     const handleDriverStatusUpdate = (data: { driverId: string; status: string }) => {
       console.log(`Driver ${data.driverId} status updated to: ${data.status}`);
-      
       if (data.status === "offline") {
         setNearbyDrivers(prev => prev.filter(driver => driver.driverId !== data.driverId));
         setNearbyDriversCount(prev => Math.max(0, prev - 1));
         return;
       }
-      
-      setNearbyDrivers(prev => {
-        return prev.map(driver => 
-          driver.driverId === data.driverId 
-            ? { ...driver, status: data.status }
-            : driver
-        );
-      });
+      setNearbyDrivers(prev => prev.map(driver => 
+        driver.driverId === data.driverId ? { ...driver, status: data.status } : driver
+      ));
     };
     
     socket.on("driverStatusUpdate", handleDriverStatusUpdate);
     return () => socket.off("driverStatusUpdate", handleDriverStatusUpdate);
   }, []);
 
-  // Listen for ride-related updates
   useEffect(() => {
     if (!currentRideId) return;
     const rideAccepted = (data: any) => {
@@ -564,7 +502,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     };
   }, [currentRideId, lastCoord, travelledKm]);
 
-  // Map press handler
   const handleMapPress = (e: any) => {
     const coords = e.nativeEvent.coordinate;
     if (!pickupLocation) {
@@ -587,7 +524,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     }
   };
 
-  // Fetch route
   const fetchRoute = async (dropCoord: LocationType) => {
     if (!pickupLocation) return;
     try {
@@ -611,7 +547,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     }
   };
 
-  // Fetch suggestions for pickup and dropoff
   const fetchSuggestions = async (query: string, type: 'pickup' | 'dropoff'): Promise<SuggestionType[]> => {
     try {
       console.log(`Fetching suggestions for: ${query}`);
@@ -727,7 +662,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     if (pickupLocation) fetchRoute({ latitude: parseFloat(suggestion.lat), longitude: parseFloat(suggestion.lon) });
   };
 
-  // Calculate price
   const calculatePrice = () => {
     if (!pickupLocation || !dropoffLocation || !distance) return null;
     const distanceKm = parseFloat(distance);
@@ -774,98 +708,199 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
       const price = calculatePrice();
       setEstimatedPrice(price);
     }
-    // Fetch drivers for the selected vehicle type
     if (location) {
       fetchNearbyDrivers(location.latitude, location.longitude);
     }
   };
 
-  const handleBookRide = async () => {
+// D:\newapp\userapp-main 2\userapp-main\src\Screen1\Taxibooking\TaxiContent.tsx
+// Update the handleBookRide function
+
+const handleBookRide = async () => {
+  if (!pickupLocation || !dropoffLocation) {
+    Alert.alert("Error", "Please select both pickup and dropoff locations");
+    return;
+  }
+  if (!estimatedPrice) {
+    Alert.alert("Error", "Price calculation failed. Please try again.");
+    return;
+  }
+
+  const rideId = "RID" + Date.now();
+  setCurrentRideId(rideId);
+  setRideStatus("searching");
+
+  try {
+    // Get user authentication details
     const token = await AsyncStorage.getItem('authToken');
+    const userId = await AsyncStorage.getItem('userId') || 'U001';
+    
     if (!token) {
       Alert.alert('Authentication Error', 'Please log in to book a ride');
       return;
     }
-    const userId = await AsyncStorage.getItem('userId') || 'U001';
-    if (!pickupLocation || !dropoffLocation) {
-      Alert.alert("Error", "Please select both pickup and dropoff locations");
-      return;
-    }
-    if (!estimatedPrice) {
-      Alert.alert("Error", "Price calculation failed. Please try again.");
-      return;
-    }
-    
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    setBookingOTP(otp);
-    
-    const rideId = "RID" + Date.now();
-    setCurrentRideId(rideId);
-    setRideStatus("searching");
-    
-    Alert.alert(
-      "Ride Booked Successfully! 🎉", 
-      `Your ride has been booked. Your OTP is: ${otp}\nPlease share this OTP with your driver.`,
-      [
-        { 
-          text: "OK", 
-          onPress: () => {
-            setShowConfirmModal(true);
-          }
-        }
-      ]
-    );
-    
-    socket.emit("bookRide", {
+
+    // Prepare ride data
+    const rideData = {
       rideId,
       userId,
-      pickup: { lat: pickupLocation.latitude, lng: pickupLocation.longitude, address: pickup },
-      drop: { lat: dropoffLocation.latitude, lng: dropoffLocation.longitude, address: dropoff },
+      pickup: { 
+        lat: pickupLocation.latitude, 
+        lng: pickupLocation.longitude, 
+        address: pickup 
+      },
+      drop: { 
+        lat: dropoffLocation.latitude, 
+        lng: dropoffLocation.longitude, 
+        address: dropoff 
+      },
       vehicleType: selectedRideType,
-    });
+    };
+
+    // Send ride booking via socket
+    if (socket && socket.connected) {
+      socket.emit("bookRide", rideData);
+      console.log("Ride booking sent via socket");
+    } else {
+      // Fallback: Use HTTP API if socket is not connected
+      const backendUrl = getBackendUrl();
+      const response = await axios.post(
+        `${backendUrl}/api/rides`,
+        {
+          RAID_ID: rideId,
+          user: userId,
+          customerId: userId,
+          name: "User",
+          pickupLocation: pickup,
+          dropoffLocation: dropoff,
+          pickupCoordinates: pickupLocation,
+          dropoffCoordinates: dropoffLocation,
+          fare: estimatedPrice,
+          rideType: selectedRideType,
+          distance: distance,
+          travelTime: travelTime,
+          isReturnTrip: wantReturn,
+          pickup: {
+            addr: pickup,
+            lat: pickupLocation.latitude,
+            lng: pickupLocation.longitude
+          },
+          drop: {
+            addr: dropoff,
+            lat: dropoffLocation.latitude,
+            lng: dropoffLocation.longitude
+          },
+          price: estimatedPrice,
+          distanceKm: parseFloat(distance) || 0
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      if (response.data.success) {
+        // Generate OTP locally for display
+        const otp = Math.floor(1000 + Math.random() * 9000).toString();
+        setBookingOTP(otp);
+        setShowConfirmModal(true);
+        Alert.alert(
+          "Ride Booked Successfully! 🎉",
+          `Your ride has been booked. Your OTP is: ${otp}\nPlease share this OTP with your driver.`
+        );
+      } else {
+        throw new Error(response.data.error || 'Failed to book ride');
+      }
+    }
+  } catch (error: any) {
+    console.error('Error booking ride:', error);
+    Alert.alert("Booking Failed", error.message || "Failed to book ride. Please try again.");
+    setRideStatus("idle");
+    setCurrentRideId(null);
+  }
+};
+
+
+
+
+
+
+
+// Add this useEffect in the TaxiContent component
+
+useEffect(() => {
+  const handleRideCreated = (data) => {
+    if (data.success) {
+      setBookingOTP(data.otp);
+      setShowConfirmModal(true);
+      Alert.alert(
+        "Ride Booked Successfully! 🎉",
+        `Your ride has been booked. Your OTP is: ${data.otp}\nPlease share this OTP with your driver.`
+      );
+    } else {
+      Alert.alert("Booking Failed", data.message || "Failed to book ride");
+      setRideStatus("idle");
+      setCurrentRideId(null);
+    }
   };
 
-  const handleConfirmBooking = async () => {
-    try {
-      const token = await AsyncStorage.getItem('authToken');
-      if (!token) {
-        Alert.alert('Authentication Error', 'Please log in again to book a ride');
-        return;
-      }
-      const backendUrl = getBackendUrl();
-      const rideData = {
-        pickupLocation: pickup,
-        dropoffLocation: dropoff,
-        pickupCoordinates: pickupLocation,
-        dropoffCoordinates: dropoffLocation,
-        fare: estimatedPrice,
-        rideType: selectedRideType,
-        otp: bookingOTP,
-        distance,
-        travelTime,
-        isReturnTrip: wantReturn,
-      };
-      const response = await axios.post(
-        `${backendUrl}/api/users/book-ride`,
-        rideData,
-        { headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, timeout: 10000 }
-      );
-      if (response.data.success) {
-        if (response.data.ride && response.data.ride.customerId) await AsyncStorage.setItem('customerId', response.data.ride.customerId);
-        setShowConfirmModal(false);
-        Alert.alert(
-          'Booking Confirmed',
-          `Your ride has been booked with OTP: ${bookingOTP}\nCustomer ID: ${response.data.ride.customerId || 'N/A'}\nDriver will arrive shortly.`
-        );
-      } else throw new Error(response.data.error || 'Failed to book ride');
-    } catch (error: any) {
-      if (error.response) {
-        if (error.response.status === 401) Alert.alert('Authentication Error', 'Your session has expired. Please log in again.');
-        else Alert.alert('Booking Failed', error.response.data.error || error.response.data.message || 'Failed to book ride. Please try again.');
-      } else if (error.request) Alert.alert('Network Error', 'No response from server. Please check your internet connection.');
-      else Alert.alert('Booking Failed', error.message || 'Failed to book ride. Please try again.');
-      setApiError(error.message || 'Failed to book ride');
+  const handleRideBookingError = (error) => {
+    console.error('Ride booking error:', error);
+    Alert.alert("Booking Error", error.message);
+    setRideStatus("idle");
+    setCurrentRideId(null);
+  };
+
+  socket.on("rideCreated", handleRideCreated);
+  socket.on("rideBookingError", handleRideBookingError);
+
+  return () => {
+    socket.off("rideCreated", handleRideCreated);
+    socket.off("rideBookingError", handleRideBookingError);
+  };
+}, []);
+
+
+
+
+  const handleConfirmBooking = () => {
+    console.log('Simulating booking confirmation process...');
+    
+    if (!currentRideId || !bookingOTP) {
+      Alert.alert("Error", "Invalid booking state. Please try booking again.");
+      return;
     }
+    
+    setRideStatus("onTheWay"); // Simulate driver acceptance
+    setShowConfirmModal(false);
+    Alert.alert(
+      'Booking Confirmed',
+      `Your ride has been booked with OTP: ${bookingOTP}\nDriver will arrive shortly.`
+    );
+
+    // Simulate ride progression locally
+    setTimeout(() => {
+      setRideStatus("arrived");
+      Alert.alert("Driver Arrived", "Your driver has arrived. Share the OTP to start.");
+    }, 5000); // 5 seconds delay
+
+    setTimeout(() => {
+      setRideStatus("completed");
+      Alert.alert("🎉 Ride Completed", `Distance Travelled: ${travelledKm.toFixed(2)} km`);
+      setTimeout(() => {
+        setCurrentRideId(null);
+        setDriverId(null);
+        setDriverLocation(null);
+        setRouteCoords([]);
+        setPickupLocation(null);
+        setDropoffLocation(null);
+        propHandlePickupChange("");
+        propHandleDropoffChange("");
+        setRideStatus("idle");
+      }, 3000);
+    }, 10000); // 10 seconds for completion
   };
 
   const renderVehicleIcon = (type: 'bike' | 'taxi' | 'port', size: number = 24, color: string = '#000000') => {
@@ -920,7 +955,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
         </View>
       ) : (
         <>
-          {/* Map Container - Medium Size */}
           <View style={styles.mapContainer}>
             <MapView
               ref={mapRef}
@@ -963,7 +997,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
               {routeCoords.length > 0 && <Polyline coordinates={routeCoords} strokeWidth={5} strokeColor="#4CAF50" />}
             </MapView>
             
-            {/* Available Drivers Overlay */}
             <View style={styles.driversCountOverlay}>
               <Text style={styles.driversCountText}>
                 Available Drivers Nearby: {nearbyDriversCount}
@@ -971,7 +1004,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             </View>
           </View>
 
-          {/* Input Container */}
           <View style={styles.inputContainer}>
             <View style={styles.inputWrapper}>
               <View style={styles.inputIconContainer}>
@@ -1046,7 +1078,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             )}
           </View>
           
-          {/* Distance and Time Container */}
           {(distance || travelTime) && (
             <View style={styles.distanceTimeContainer}>
               <View style={styles.distanceTimeItem}>
@@ -1068,13 +1099,11 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             </View>
           )}
           
-          {/* Vehicle Type Selection */}
           <RideTypeSelector
             selectedRideType={selectedRideType}
             setSelectedRideType={handleRideTypeSelect}
           />
           
-          {/* Book Ride Button */}
           <View style={styles.bookRideButtonContainer}>
             <TouchableOpacity
               style={[
@@ -1088,7 +1117,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             </TouchableOpacity>
           </View>
           
-          {/* Price Panel */}
           {showPricePanel && selectedRideType && (
             <Animated.View
               style={[
@@ -1152,7 +1180,6 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
             </Animated.View>
           )}
           
-          {/* Confirmation Modal */}
           <Modal
             animationType="slide"
             transparent={true}
@@ -1209,21 +1236,9 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: '#F5F5F5' 
-  },
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center' 
-  },
-  loadingText: { 
-    color: '#757575', 
-    fontSize: 16, 
-    marginTop: 10 
-  },
-  // Map Styles
+  container: { flex: 1, backgroundColor: '#F5F5F5' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#757575', fontSize: 16, marginTop: 10 },
   mapContainer: { 
     height: Dimensions.get('window').height * 0.4, 
     width: '100%',
@@ -1236,9 +1251,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4
   },
-  map: { 
-    ...StyleSheet.absoluteFillObject 
-  },
+  map: { ...StyleSheet.absoluteFillObject },
   driversCountOverlay: {
     position: 'absolute',
     top: 10,
@@ -1253,12 +1266,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2
   },
-  driversCountText: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#333333' 
-  },
-  // Input Styles
+  driversCountText: { fontSize: 14, fontWeight: '600', color: '#333333' },
   inputContainer: { 
     marginHorizontal: 20,
     marginBottom: 15,
@@ -1283,12 +1291,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center'
   },
-  input: { 
-    flex: 1,
-    fontSize: 16,
-    paddingVertical: 12,
-    color: '#333'
-  },
+  input: { flex: 1, fontSize: 16, paddingVertical: 12, color: '#333' },
   suggestionsContainer: { 
     marginTop: 5,
     marginHorizontal: 15,
@@ -1309,31 +1312,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, 
     borderBottomColor: '#EEEEEE' 
   },
-  suggestionIcon: { 
-    marginRight: 12 
-  },
-  suggestionTextContainer: { 
-    flex: 1 
-  },
-  suggestionMainText: { 
-    fontSize: 16, 
-    fontWeight: '500', 
-    color: '#333333' 
-  },
-  suggestionSubText: { 
-    fontSize: 12, 
-    color: '#757575', 
-    marginTop: 2 
-  },
-  noSuggestionsContainer: { 
-    paddingVertical: 12, 
-    alignItems: 'center' 
-  },
-  noSuggestionsText: { 
-    fontSize: 14, 
-    color: '#666666' 
-  },
-  // Distance and Time Styles
+  suggestionIcon: { marginRight: 12 },
+  suggestionTextContainer: { flex: 1 },
+  suggestionMainText: { fontSize: 16, fontWeight: '500', color: '#333333' },
+  suggestionSubText: { fontSize: 12, color: '#757575', marginTop: 2 },
+  noSuggestionsContainer: { paddingVertical: 12, alignItems: 'center' },
+  noSuggestionsText: { fontSize: 14, color: '#666666' },
   distanceTimeContainer: { 
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1348,29 +1332,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4
   },
-  distanceTimeItem: { 
-    flexDirection: 'row', 
-    alignItems: 'center' 
-  },
-  distanceTimeLabel: { 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#757575', 
-    marginLeft: 8 
-  },
-  distanceTimeValue: { 
-    fontSize: 14, 
-    fontWeight: 'bold', 
-    color: '#333333',
-    marginLeft: 5
-  },
-  // Vehicle Type Styles
-  rideTypeContainer: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    marginHorizontal: 20,
-    marginBottom: 15 
-  },
+  distanceTimeItem: { flexDirection: 'row', alignItems: 'center' },
+  distanceTimeLabel: { fontSize: 14, fontWeight: '600', color: '#757575', marginLeft: 8 },
+  distanceTimeValue: { fontSize: 14, fontWeight: 'bold', color: '#333333', marginLeft: 5 },
+  rideTypeContainer: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 20, marginBottom: 15 },
   rideTypeButton: { 
     flexDirection: 'column', 
     alignItems: 'center', 
@@ -1385,23 +1350,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1, 
     shadowRadius: 4 
   },
-  selectedRideTypeButton: { 
-    backgroundColor: '#FF5722' 
-  },
-  rideTypeText: { 
-    marginTop: 5, 
-    fontSize: 14, 
-    fontWeight: '600', 
-    color: '#333333' 
-  },
-  selectedRideTypeText: { 
-    color: '#FFFFFF' 
-  },
-  // Book Ride Button Styles
-  bookRideButtonContainer: {
-    marginHorizontal: 20,
-    marginBottom: 20
-  },
+  selectedRideTypeButton: { backgroundColor: '#FF5722' },
+  rideTypeText: { marginTop: 5, fontSize: 14, fontWeight: '600', color: '#333333' },
+  selectedRideTypeText: { color: '#FFFFFF' },
+  bookRideButtonContainer: { marginHorizontal: 20, marginBottom: 20 },
   bookRideButton: { 
     paddingVertical: 15, 
     borderRadius: 12, 
@@ -1412,18 +1364,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4
   },
-  enabledBookRideButton: { 
-    backgroundColor: '#FF5722' 
-  },
-  disabledBookRideButton: { 
-    backgroundColor: '#BDBDBD' 
-  },
-  bookRideButtonText: { 
-    color: '#FFFFFF', 
-    fontSize: 16, 
-    fontWeight: '600' 
-  },
-  // Error Styles
+  enabledBookRideButton: { backgroundColor: '#FF5722' },
+  disabledBookRideButton: { backgroundColor: '#BDBDBD' },
+  bookRideButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
   errorContainer: { 
     marginHorizontal: 20,
     marginBottom: 15,
@@ -1433,12 +1376,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4, 
     borderLeftColor: '#F44336' 
   },
-  errorText: { 
-    color: '#D32F2F', 
-    fontSize: 14, 
-    textAlign: 'center' 
-  },
-  // Price Panel Styles
+  errorText: { color: '#D32F2F', fontSize: 14, textAlign: 'center' },
   pricePanel: { 
     position: 'absolute', 
     bottom: 0, 
