@@ -490,15 +490,34 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
         Alert.alert("OTP Received", `Share OTP with driver: ${otp}`);
       }
     };
+    const rideCreated = (data: any) => {
+      if (data.rideId === currentRideId) {
+        setBookingOTP(data.otp);
+        setShowConfirmModal(true);
+        Alert.alert(
+          "Ride Booked Successfully! 🎉",
+          `Your ride has been booked. Your OTP is: ${data.otp}\nPlease share this OTP with your driver.`
+        );
+        setRideStatus("searching");
+      } else if (data.message) {
+        Alert.alert("Booking Failed", data.message || "Failed to book ride");
+        setRideStatus("idle");
+        setCurrentRideId(null);
+      }
+    };
+
     socket.on("rideAccepted", rideAccepted);
     socket.on("driverLocationUpdate", driverLocUpdate);
     socket.on("rideStatusUpdate", rideStatusUpdate);
     socket.on("rideOTP", rideOtpListener);
+    socket.on("rideCreated", rideCreated); // Add listener for rideCreated event
+
     return () => {
       socket.off("rideAccepted", rideAccepted);
       socket.off("driverLocationUpdate", driverLocUpdate);
       socket.off("rideStatusUpdate", rideStatusUpdate);
       socket.off("rideOTP", rideOtpListener);
+      socket.off("rideCreated", rideCreated); // Cleanup rideCreated listener
     };
   }, [currentRideId, lastCoord, travelledKm]);
 
@@ -713,157 +732,102 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     }
   };
 
-// D:\newapp\userapp-main 2\userapp-main\src\Screen1\Taxibooking\TaxiContent.tsx
-// Update the handleBookRide function
-
 const handleBookRide = async () => {
-  if (!pickupLocation || !dropoffLocation) {
-    Alert.alert("Error", "Please select both pickup and dropoff locations");
-    return;
-  }
-  if (!estimatedPrice) {
-    Alert.alert("Error", "Price calculation failed. Please try again.");
-    return;
-  }
-
-  const rideId = "RID" + Date.now();
-  setCurrentRideId(rideId);
-  setRideStatus("searching");
-
   try {
-    // Get user authentication details
+    // Check for authentication token
     const token = await AsyncStorage.getItem('authToken');
-    const userId = await AsyncStorage.getItem('userId') || 'U001';
-    
     if (!token) {
       Alert.alert('Authentication Error', 'Please log in to book a ride');
       return;
     }
 
-    // Prepare ride data
-    const rideData = {
+    // Get user ID or fallback to default
+    const userId = await AsyncStorage.getItem('userId') || 'U001';
+
+    // Validate pickup and dropoff locations
+    if (!pickupLocation || !dropoffLocation) {
+      Alert.alert('Error', 'Please select both pickup and dropoff locations');
+      return;
+    }
+
+    // Validate estimated price
+    if (!estimatedPrice) {
+      Alert.alert('Error', 'Price calculation failed. Please try again.');
+      return;
+    }
+
+    // Generate OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    setBookingOTP(otp);
+
+    // Set ride ID and status
+    const rideId = 'RID' + Date.now();
+    setCurrentRideId(rideId);
+    setRideStatus('searching');
+
+    // Show customized alert for ride booking
+    Alert.alert(
+      'Ride Booked!',
+      `Your ride is confirmed. OTP: ${otp}\nShare this OTP with your driver.`,
+      [
+        {
+          text: 'OK',
+          onPress: () => setShowConfirmModal(true),
+          style: 'default',
+        },
+      ],
+      { cancelable: false } // Prevents dismissing the alert by tapping outside
+    );
+
+    // Emit booking event via socket
+    socket.emit('bookRide', {
       rideId,
       userId,
-      pickup: { 
-        lat: pickupLocation.latitude, 
-        lng: pickupLocation.longitude, 
-        address: pickup 
-      },
-      drop: { 
-        lat: dropoffLocation.latitude, 
-        lng: dropoffLocation.longitude, 
-        address: dropoff 
-      },
+      pickup: { lat: pickupLocation.latitude, lng: pickupLocation.longitude, address: pickup },
+      drop: { lat: dropoffLocation.latitude, lng: dropoffLocation.longitude, address: dropoff },
       vehicleType: selectedRideType,
-    };
-
-    // Send ride booking via socket
-    if (socket && socket.connected) {
-      socket.emit("bookRide", rideData);
-      console.log("Ride booking sent via socket");
-    } else {
-      // Fallback: Use HTTP API if socket is not connected
-      const backendUrl = getBackendUrl();
-      const response = await axios.post(
-        `${backendUrl}/api/rides`,
-        {
-          RAID_ID: rideId,
-          user: userId,
-          customerId: userId,
-          name: "User",
-          pickupLocation: pickup,
-          dropoffLocation: dropoff,
-          pickupCoordinates: pickupLocation,
-          dropoffCoordinates: dropoffLocation,
-          fare: estimatedPrice,
-          rideType: selectedRideType,
-          distance: distance,
-          travelTime: travelTime,
-          isReturnTrip: wantReturn,
-          pickup: {
-            addr: pickup,
-            lat: pickupLocation.latitude,
-            lng: pickupLocation.longitude
-          },
-          drop: {
-            addr: dropoff,
-            lat: dropoffLocation.latitude,
-            lng: dropoffLocation.longitude
-          },
-          price: estimatedPrice,
-          distanceKm: parseFloat(distance) || 0
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (response.data.success) {
-        // Generate OTP locally for display
-        const otp = Math.floor(1000 + Math.random() * 9000).toString();
-        setBookingOTP(otp);
-        setShowConfirmModal(true);
-        Alert.alert(
-          "Ride Booked Successfully! 🎉",
-          `Your ride has been booked. Your OTP is: ${otp}\nPlease share this OTP with your driver.`
-        );
-      } else {
-        throw new Error(response.data.error || 'Failed to book ride');
-      }
-    }
-  } catch (error: any) {
-    console.error('Error booking ride:', error);
-    Alert.alert("Booking Failed", error.message || "Failed to book ride. Please try again.");
-    setRideStatus("idle");
-    setCurrentRideId(null);
+    });
+  } catch (error) {
+    console.error('Booking error:', error);
+    Alert.alert('Booking Failed', 'An unexpected error occurred. Please try again.');
   }
 };
 
+  useEffect(() => {
+    const handleRideCreated = (data) => {
+      console.log('Ride created event received:', data);
+      if (data.success && data.rideId === currentRideId) {
+        const customerId = AsyncStorage.getItem('customerId') || 'U001';
+        const otp = customerId.slice(-4);
+        setBookingOTP(data.otp || otp); // Use OTP from event or fallback to customerId
+        setShowConfirmModal(true);
+        Alert.alert(
+          "Ride Booked Successfully! 🎉",
+          `Your ride has been booked. Your OTP is: ${data.otp || otp}\nPlease share this OTP with your driver.`
+        );
+        setRideStatus("searching");
+      } else if (data.message) {
+        Alert.alert("Booking Failed", data.message || "Failed to book ride");
+        setRideStatus("idle");
+        setCurrentRideId(null);
+      }
+    };
 
-
-
-
-
-
-// Add this useEffect in the TaxiContent component
-
-useEffect(() => {
-  const handleRideCreated = (data) => {
-    if (data.success) {
-      setBookingOTP(data.otp);
-      setShowConfirmModal(true);
-      Alert.alert(
-        "Ride Booked Successfully! 🎉",
-        `Your ride has been booked. Your OTP is: ${data.otp}\nPlease share this OTP with your driver.`
-      );
-    } else {
-      Alert.alert("Booking Failed", data.message || "Failed to book ride");
+    const handleRideBookingError = (error) => {
+      console.error('Ride booking error:', error);
+      Alert.alert("Booking Error", error.message);
       setRideStatus("idle");
       setCurrentRideId(null);
-    }
-  };
+    };
 
-  const handleRideBookingError = (error) => {
-    console.error('Ride booking error:', error);
-    Alert.alert("Booking Error", error.message);
-    setRideStatus("idle");
-    setCurrentRideId(null);
-  };
+    socket.on("rideCreated", handleRideCreated);
+    socket.on("rideBookingError", handleRideBookingError);
 
-  socket.on("rideCreated", handleRideCreated);
-  socket.on("rideBookingError", handleRideBookingError);
-
-  return () => {
-    socket.off("rideCreated", handleRideCreated);
-    socket.off("rideBookingError", handleRideBookingError);
-  };
-}, []);
-
-
-
+    return () => {
+      socket.off("rideCreated", handleRideCreated);
+      socket.off("rideBookingError", handleRideBookingError);
+    };
+  }, [currentRideId]);
 
   const handleConfirmBooking = () => {
     console.log('Simulating booking confirmation process...');
@@ -1455,6 +1419,7 @@ const styles = StyleSheet.create({
   },
   returnTripRow: { 
     flexDirection: 'row', 
+
     justifyContent: 'space-between', 
     alignItems: 'center', 
     marginTop: 5 

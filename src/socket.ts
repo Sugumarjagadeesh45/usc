@@ -4,7 +4,7 @@ import { io } from "socket.io-client";
 // const SOCKET_URL = "http://10.0.2.2:5001"; 
 
 // Real deviceக்கு ngrok URL பயன்படுத்துங்கள்
-const SOCKET_URL = "https://aeec3936d0fd.ngrok-free.app";
+const SOCKET_URL = "https://3f3ba21d8f81.ngrok-free.app";
 
 const socket = io(SOCKET_URL, {
   transports: ["websocket","polling"],
