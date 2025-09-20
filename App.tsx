@@ -9,9 +9,7 @@ import SplashScreen from './src/SplashScreen';
 import WelcomeScreen1 from './src/WelcomeScreen1';
 import WelcomeScreen2 from './src/WelcomeScreen2';
 import WelcomeScreen3 from './src/WelcomeScreen3';
-import WelcomeScreen5 from './src/WelcomeScreen5';
-import WelcomeScreen13 from './src/WelcomeScreen13';
-import WastPage from './src/WastPage';
+
 import ProfileScreen from './src/Screen1/Menuicon/ProfileScreen';
 import Setting from './src/Screen1/Menuicon/Setting';
 import ReportDriver from './src/Screen1/Menuicon/ReportDriver';
@@ -69,9 +67,7 @@ export default function App() {
           <Stack.Screen name="WelcomeScreen1" component={WelcomeScreen1} />
           <Stack.Screen name="WelcomeScreen2" component={WelcomeScreen2} />
           <Stack.Screen name="WelcomeScreen3" component={WelcomeScreen3} />
-          <Stack.Screen name="WelcomeScreen5" component={WelcomeScreen5} />
-          <Stack.Screen name="WelcomeScreen13" component={WelcomeScreen13} />
-          <Stack.Screen name="WastPage" component={WastPage} />
+     
           <Stack.Screen name="Screen1" component={Screen1} />
           <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
           <Stack.Screen name="Setting" component={Setting} />

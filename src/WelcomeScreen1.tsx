@@ -7,7 +7,7 @@ const WelcomeScreen1 = () => {
   const navigation = useNavigation();
 
   const handlePress = () => {
-    Keyboard.dismiss(); // just in case keyboard is open
+    Keyboard.dismiss();
     navigation.navigate('WelcomeScreen2');
   };
 

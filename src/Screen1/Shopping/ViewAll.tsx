@@ -1,14 +1,12 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, FlatList } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import ProductCard from './ProductCard';
-import { CartContext } from './ShoppingContent';
 
 const ViewAll = () => {
   const navigation = useNavigation();
   const route = useRoute();
-  const { title, products } = route.params as any;
-  const { addToCart } = useContext(CartContext);
+  const { title, products, addToCart } = route.params as any;
 
   return (
     <View style={styles.container}>
