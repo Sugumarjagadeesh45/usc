@@ -1,4 +1,3 @@
-// D:\newapp\userapp-main 2\userapp-main\src\Screen1\Taxibooking\TaxiContent.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
@@ -227,6 +226,13 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
   
   const [isPickupCurrent, setIsPickupCurrent] = useState(true);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [driverArrivedAlertShown, setDriverArrivedAlertShown] = useState(false);
+  const [rideCompletedAlertShown, setRideCompletedAlertShown] = useState(false);
+
+
+
+  const [isBooking, setIsBooking] = useState(false);
+
   
   const pickupDebounceTimer = useRef<NodeJS.Timeout | null>(null);
   const dropoffDebounceTimer = useRef<NodeJS.Timeout | null>(null);
@@ -250,6 +256,20 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c;
     return distance;
+  };
+
+  // Add this function to calculate distance in meters
+  const calculateDistanceInMeters = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 6371; // Earth's radius in kilometers
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    const distanceKm = R * c;
+    return distanceKm * 1000; // Convert to meters
   };
 
   const fetchNearbyDrivers = (latitude: number, longitude: number) => {
@@ -482,58 +502,105 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
 
   useEffect(() => {
     if (!currentRideId) return;
+    
     const rideAccepted = (data: any) => {
       if (data.rideId === currentRideId) {
         setRideStatus("onTheWay");
         setDriverId(data.driverId);
-        Alert.alert("Driver on the way 🚖");
+        // Reset alert flags when a new driver is assigned
+        setDriverArrivedAlertShown(false);
+        setRideCompletedAlertShown(false);
       }
     };
+    
     const driverLocUpdate = (data: any) => {
       if (data.rideId === currentRideId) {
         const coords = { latitude: data.lat, longitude: data.lng };
         setDriverLocation(coords);
+        
         if (lastCoord) {
           const dist = haversine(lastCoord, coords);
           setTravelledKm(prev => prev + dist / 1000);
         }
         setLastCoord(coords);
+        
+        // Check if driver is near pickup location (within 50m)
+        if (pickupLocation && rideStatus === "onTheWay") {
+          const distanceToPickup = calculateDistanceInMeters(
+            coords.latitude, 
+            coords.longitude, 
+            pickupLocation.latitude, 
+            pickupLocation.longitude
+          );
+          
+          if (distanceToPickup <= 50 && !driverArrivedAlertShown) { // 50m
+            setRideStatus("arrived");
+            setDriverArrivedAlertShown(true);
+            Alert.alert(
+              "Driver Arrived",
+              "Your driver has arrived. Share the OTP to start.",
+              [{ text: "OK", onPress: () => {} }]
+            );
+          }
+        }
+        
+        // Check if driver is near dropoff location (within 50m)
+        if (dropoffLocation && rideStatus === "started") {
+          const distanceToDropoff = calculateDistanceInMeters(
+            coords.latitude, 
+            coords.longitude, 
+            dropoffLocation.latitude, 
+            dropoffLocation.longitude
+          );
+          
+          if (distanceToDropoff <= 50 && !rideCompletedAlertShown) { // 50m
+            setRideStatus("completed");
+            setRideCompletedAlertShown(true);
+            Alert.alert(
+              "Ride Completed",
+              `Distance Travelled: ${travelledKm.toFixed(2)}km\nDriver Arrived`,
+              [{ text: "OK", onPress: () => {
+                // Reset ride state after completion
+                setTimeout(() => {
+                  setCurrentRideId(null);
+                  setDriverId(null);
+                  setDriverLocation(null);
+                  setRouteCoords([]);
+                  setPickupLocation(null);
+                  setDropoffLocation(null);
+                  propHandlePickupChange("");
+                  propHandleDropoffChange("");
+                  setRideStatus("idle");
+                  setDriverArrivedAlertShown(false);
+                  setRideCompletedAlertShown(false);
+                }, 3000);
+              }}]
+            );
+          }
+        }
       }
     };
+    
     const rideStatusUpdate = (data: any) => {
       if (data.rideId === currentRideId) {
         setRideStatus(data.status);
         if (data.status === "completed") {
-          Alert.alert("🎉 Ride Completed", `Distance Travelled: ${travelledKm.toFixed(2)} km`);
-          setTimeout(() => {
-            setCurrentRideId(null);
-            setDriverId(null);
-            setDriverLocation(null);
-            setRouteCoords([]);
-            setPickupLocation(null);
-            setDropoffLocation(null);
-            propHandlePickupChange("");
-            propHandleDropoffChange("");
-            setRideStatus("idle");
-          }, 3000);
+          // This is handled in driverLocUpdate
         }
       }
     };
+    
     const rideOtpListener = ({ rideId, otp }: any) => {
       if (rideId === currentRideId) {
         setBookingOTP(otp);
         setShowConfirmModal(true);
-        Alert.alert("OTP Received", `Share OTP with driver: ${otp}`);
       }
     };
+    
     const rideCreated = (data: any) => {
       if (data.rideId === currentRideId) {
         setBookingOTP(data.otp);
         setShowConfirmModal(true);
-        Alert.alert(
-          "Ride Booked Successfully! 🎉",
-          `Your ride has been booked. Your OTP is: ${data.otp}\nPlease share this OTP with your driver.`
-        );
         setRideStatus("searching");
       } else if (data.message) {
         Alert.alert("Booking Failed", data.message || "Failed to book ride");
@@ -546,16 +613,16 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
     socket.on("driverLocationUpdate", driverLocUpdate);
     socket.on("rideStatusUpdate", rideStatusUpdate);
     socket.on("rideOTP", rideOtpListener);
-    socket.on("rideCreated", rideCreated); // Add listener for rideCreated event
+    socket.on("rideCreated", rideCreated);
 
     return () => {
       socket.off("rideAccepted", rideAccepted);
       socket.off("driverLocationUpdate", driverLocUpdate);
       socket.off("rideStatusUpdate", rideStatusUpdate);
       socket.off("rideOTP", rideOtpListener);
-      socket.off("rideCreated", rideCreated); // Cleanup rideCreated listener
+      socket.off("rideCreated", rideCreated);
     };
-  }, [currentRideId, lastCoord, travelledKm]);
+  }, [currentRideId, lastCoord, travelledKm, pickupLocation, dropoffLocation, rideStatus, driverArrivedAlertShown, rideCompletedAlertShown]);
 
   const handleMapPress = (e: any) => {
     const coords = e.nativeEvent.coordinate;
@@ -769,140 +836,205 @@ const TaxiContent: React.FC<TaxiContentProps> = ({
   };
 
 const handleBookRide = async () => {
+  if (isBooking) {
+    console.log('⏭️ Ride booking already in progress, skipping duplicate');
+    return;
+  }
+  
   try {
-    // Check for authentication token
+    setIsBooking(true);
+    
     const token = await AsyncStorage.getItem('authToken');
     if (!token) {
       Alert.alert('Authentication Error', 'Please log in to book a ride');
+      setIsBooking(false);
       return;
     }
 
-    // Get user ID or fallback to default
-    const userId = await AsyncStorage.getItem('userId') || 'U001';
-
-    // Validate pickup and dropoff locations
     if (!pickupLocation || !dropoffLocation) {
       Alert.alert('Error', 'Please select both pickup and dropoff locations');
+      setIsBooking(false);
       return;
     }
 
-    // Validate estimated price
     if (!estimatedPrice) {
       Alert.alert('Error', 'Price calculation failed. Please try again.');
+      setIsBooking(false);
       return;
     }
 
-    // Generate OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
-    setBookingOTP(otp);
+    // Fetch AsyncStorage data
+    const userId = await AsyncStorage.getItem('userId');
+    const customerId = (await AsyncStorage.getItem('customerId')) || 'U001';
+    const userName = await AsyncStorage.getItem('userName');
+    const userMobile = await AsyncStorage.getItem('userMobile');
 
-    // Set ride ID and status
-    const rideId = 'RID' + Date.now();
-    setCurrentRideId(rideId);
+    // Generate OTP from customer ID (last 4 digits)
+    let otp;
+    if (customerId && customerId.length >= 4) {
+      otp = customerId.slice(-4);
+    } else {
+      // Fallback: Generate random 4-digit OTP
+      otp = Math.floor(1000 + Math.random() * 9000).toString();
+    }
+
     setRideStatus('searching');
 
-    // Show customized alert for ride booking
-    Alert.alert(
-      'Ride Booked!',
-      `Your ride is confirmed. OTP: ${otp}\nShare this OTP with your driver.`,
-      [
-        {
-          text: 'OK',
-          onPress: () => setShowConfirmModal(true),
-          style: 'default',
-        },
-      ],
-      { cancelable: false } // Prevents dismissing the alert by tapping outside
-    );
-
-    // Emit booking event via socket
-    socket.emit('bookRide', {
-      rideId,
+    console.log('📋 User Details:', {
       userId,
-      pickup: { lat: pickupLocation.latitude, lng: pickupLocation.longitude, address: pickup },
-      drop: { lat: dropoffLocation.latitude, lng: dropoffLocation.longitude, address: dropoff },
-      vehicleType: selectedRideType,
+      customerId,
+      userName,
+      userMobile,
+      pickup,
+      dropoff,
+      selectedRideType,
+      otp
     });
+
+// In your frontend handleBookRide function, remove the rideId field
+const rideData = {
+  // REMOVE THIS: rideId, - backend will generate it
+  userId,
+  customerId,
+  userName,
+  userMobile,
+  pickup: { 
+    lat: pickupLocation.latitude, 
+    lng: pickupLocation.longitude, 
+    address: pickup,
+  },
+  drop: { 
+    lat: dropoffLocation.latitude, 
+    lng: dropoffLocation.longitude, 
+    address: dropoff,
+  },
+  vehicleType: selectedRideType,
+  otp, // Send OTP to backend
+  estimatedPrice,
+  distance,
+  travelTime,
+  wantReturn,
+  token
+};
+
+    // Emit ride request with callback
+    socket.emit('bookRide', rideData, (response) => {
+      setIsBooking(false);
+      
+      if (response && response.success) {
+        // Use backend-generated rideId
+        setCurrentRideId(response.rideId);
+        setBookingOTP(response.otp);
+        setShowConfirmModal(true);
+        setRideStatus('searching');
+        console.log('✅ Ride booked successfully:', response);
+      } else {
+        Alert.alert('Booking Failed', response?.message || 'Failed to book ride');
+        setRideStatus('idle');
+        setCurrentRideId(null);
+      }
+    });
+
   } catch (error) {
+    setIsBooking(false);
     console.error('Booking error:', error);
     Alert.alert('Booking Failed', 'An unexpected error occurred. Please try again.');
+    setRideStatus('idle');
+    setCurrentRideId(null);
   }
 };
 
-  useEffect(() => {
-    const handleRideCreated = (data) => {
-      console.log('Ride created event received:', data);
-      if (data.success && data.rideId === currentRideId) {
-        const customerId = AsyncStorage.getItem('customerId') || 'U001';
-        const otp = customerId.slice(-4);
-        setBookingOTP(data.otp || otp);
-        setShowConfirmModal(true);
-        Alert.alert(
-          "Ride Booked Successfully! 🎉",
-          `Your ride has been booked. Your OTP is: ${data.otp || otp}\nPlease share this OTP with your driver.`
-        );
-        setRideStatus("searching");
-      } else if (data.message) {
-        Alert.alert("Booking Failed", data.message || "Failed to book ride");
-        setRideStatus("idle");
-        setCurrentRideId(null);
-      }
-    };
+// Add this useEffect to fetch user data
+useEffect(() => {
+  const fetchUserData = async () => {
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) return;
 
-    const handleRideBookingError = (error) => {
-      console.error('Ride booking error:', error);
-      Alert.alert("Booking Error", error.message);
-      setRideStatus("idle");
-      setCurrentRideId(null);
-    };
-
-    socket.on("rideCreated", handleRideCreated);
-    socket.on("rideBookingError", handleRideBookingError);
-
-    return () => {
-      socket.off("rideCreated", handleRideCreated);
-      socket.off("rideBookingError", handleRideBookingError);
-    };
-  }, [currentRideId]);
-
-  const handleConfirmBooking = () => {
-    console.log('Simulating booking confirmation process...');
-    
-    if (!currentRideId || !bookingOTP) {
-      Alert.alert("Error", "Invalid booking state. Please try booking again.");
-      return;
+      const backendUrl = getBackendUrl();
+      const response = await axios.get(`${backendUrl}/api/users/profile`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const userProfile = response.data;
+      
+      // Debug: Log the entire user profile to see available fields
+      console.log('📋 User Profile:', userProfile);
+      
+      // Try different possible field names for mobile number
+      const userMobile = userProfile.mobile || 
+                         userProfile.phone || 
+                         userProfile.phoneNumber || 
+                         userProfile.mobileNumber || 
+                         '';
+      
+      // Save to AsyncStorage
+      await AsyncStorage.setItem('userId', userProfile._id);
+      await AsyncStorage.setItem('customerId', userProfile.customerId || userProfile._id);
+      await AsyncStorage.setItem('userName', userProfile.name || userProfile.username);
+      await AsyncStorage.setItem('userMobile', userProfile.phoneNumber);
+      await AsyncStorage.setItem('userAddress', userProfile.address || '');
+      
+    } catch (error) {
+      console.error('Error fetching user data:', error);
     }
-    
-    setRideStatus("onTheWay"); // Simulate driver acceptance
-    setShowConfirmModal(false);
-    Alert.alert(
-      'Booking Confirmed',
-      `Your ride has been booked with OTP: ${bookingOTP}\nDriver will arrive shortly.`
-    );
-
-    // Simulate ride progression locally
-    setTimeout(() => {
-      setRideStatus("arrived");
-      Alert.alert("Driver Arrived", "Your driver has arrived. Share the OTP to start.");
-    }, 5000); // 5 seconds delay
-
-    setTimeout(() => {
-      setRideStatus("completed");
-      Alert.alert("🎉 Ride Completed", `Distance Travelled: ${travelledKm.toFixed(2)} km`);
-      setTimeout(() => {
-        setCurrentRideId(null);
-        setDriverId(null);
-        setDriverLocation(null);
-        setRouteCoords([]);
-        setPickupLocation(null);
-        setDropoffLocation(null);
-        propHandlePickupChange("");
-        propHandleDropoffChange("");
-        setRideStatus("idle");
-      }, 3000);
-    }, 10000); // 10 seconds for completion
   };
 
+  fetchUserData();
+}, []);
+
+// Add this useEffect to handle ride creation events
+useEffect(() => {
+  const handleRideCreated = (data) => {
+    console.log('Ride created event received:', data);
+    if (data.success) {
+      // ✅ Ensure currentRideId is set from the response
+      if (data.rideId && !currentRideId) {
+        setCurrentRideId(data.rideId);
+      }
+      
+      // ✅ Store ride ID in AsyncStorage as backup
+      AsyncStorage.setItem('lastRideId', data.rideId || currentRideId || '');
+      
+      setBookingOTP(data.otp);
+      setShowConfirmModal(true);
+      setRideStatus("searching");
+    } else if (data.message) {
+      Alert.alert("Booking Failed", data.message || "Failed to book ride");
+      setRideStatus("idle");
+      setCurrentRideId(null);
+    }
+  };
+
+  socket.on("rideCreated", handleRideCreated);
+
+  return () => {
+    socket.off("rideCreated", handleRideCreated);
+  };
+}, [currentRideId]);
+
+const handleConfirmBooking = () => {
+  console.log('Confirming booking with OTP:', bookingOTP);
+  console.log('Current Ride ID:', currentRideId);
+  
+  // ✅ Add additional validation
+  if (!currentRideId) {
+    // Try to get rideId from the successful response
+    const rideIdFromStorage = AsyncStorage.getItem('lastRideId');
+    if (rideIdFromStorage) {
+      setCurrentRideId(rideIdFromStorage);
+    } else {
+      Alert.alert("Error", "Invalid booking state. Please try booking again.");
+      setShowConfirmModal(false);
+      return;
+    }
+  }
+  
+  setRideStatus("onTheWay"); // Simulate driver acceptance
+  setShowConfirmModal(false);
+  
+  // Alert will be shown when driver arrives at pickup location
+};
   const renderVehicleIcon = (type: 'bike' | 'taxi' | 'port', size: number = 24, color: string = '#000000') => {
     try {
       switch (type) {
@@ -1337,16 +1469,7 @@ const styles = StyleSheet.create({
   distanceTimeItem: { flexDirection: 'row', alignItems: 'center' },
   distanceTimeLabel: { fontSize: 14, fontWeight: '600', color: '#757575', marginLeft: 8 },
   distanceTimeValue: { fontSize: 14, fontWeight: 'bold', color: '#333333', marginLeft: 5 },
- 
- 
- 
- 
- 
- 
- 
- 
- 
-     rideTypeContainer: { 
+  rideTypeContainer: { 
     marginHorizontal: 20, 
     marginBottom: 15,
   },
@@ -1394,12 +1517,11 @@ const styles = StyleSheet.create({
   selectedRideDetailsText: {
     color: '#FFFFFF'
   },
-
-
-
-
-
-
+  ridePriceText: { 
+    fontSize: 14, 
+    fontWeight: 'bold', 
+    color: '#333333',
+  },
   bookRideButtonContainer: { 
     marginHorizontal: 20, 
     marginBottom: 20 
@@ -1703,116 +1825,6 @@ export default TaxiContent;
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // // D:\newapp\userapp-main 2\userapp-main\src\Screen1\Taxibooking\TaxiContent.tsx
 // import React, { useState, useEffect, useRef } from 'react';
 // import {
@@ -1837,6 +1849,8 @@ export default TaxiContent;
 // import haversine from 'haversine-distance';
 // import MaterialIcons from 'react-native-vector-icons/MaterialIcons';
 // import Ionicons from 'react-native-vector-icons/Ionicons';
+// import FontAwesome5 from 'react-native-vector-icons/FontAwesome5';
+// import FontAwesome from 'react-native-vector-icons/FontAwesome';
 // import axios from 'axios';
 // import Svg, { Path, Circle, Rect } from 'react-native-svg';
 // import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -1878,37 +1892,10 @@ export default TaxiContent;
 //   </Svg>
 // );
 
-// const RideTypeSelector = ({ selectedRideType, setSelectedRideType }) => {
+// const RideTypeSelector = ({ selectedRideType, setSelectedRideType, estimatedPrice, distance }) => {
 //   return (
 //     <View style={styles.rideTypeContainer}>
-//       <TouchableOpacity
-//         style={[
-//           styles.rideTypeButton,
-//           selectedRideType === 'taxi' && styles.selectedRideTypeButton,
-//         ]}
-//         onPress={() => setSelectedRideType('taxi')}
-//       >
-//         <TaxiIcon color={selectedRideType === 'taxi' ? '#FFFFFF' : '#000000'} size={24} />
-//         <Text style={[
-//           styles.rideTypeText,
-//           selectedRideType === 'taxi' && styles.selectedRideTypeText,
-//         ]}>Taxi</Text>
-//       </TouchableOpacity>
-      
-//       <TouchableOpacity
-//         style={[
-//           styles.rideTypeButton,
-//           selectedRideType === 'bike' && styles.selectedRideTypeButton,
-//         ]}
-//         onPress={() => setSelectedRideType('bike')}
-//       >
-//         <BikeIcon color={selectedRideType === 'bike' ? '#FFFFFF' : '#000000'} size={24} />
-//         <Text style={[
-//           styles.rideTypeText,
-//           selectedRideType === 'bike' && styles.selectedRideTypeText,
-//         ]}>Bike</Text>
-//       </TouchableOpacity>
-      
+//       {/* Porter Button */}
 //       <TouchableOpacity
 //         style={[
 //           styles.rideTypeButton,
@@ -1916,11 +1903,72 @@ export default TaxiContent;
 //         ]}
 //         onPress={() => setSelectedRideType('port')}
 //       >
-//         <PortIcon color={selectedRideType === 'port' ? '#FFFFFF' : '#000000'} size={24} />
-//         <Text style={[
-//           styles.rideTypeText,
-//           selectedRideType === 'port' && styles.selectedRideTypeText,
-//         ]}>Port</Text>
+//         <View style={styles.rideIconContainer}>
+//           <PortIcon color={selectedRideType === 'port' ? '#FFFFFF' : '#333333'} size={24} />
+//         </View>
+//         <View style={styles.rideInfoContainer}>
+//           <Text style={[
+//             styles.rideTypeText,
+//             selectedRideType === 'port' && styles.selectedRideTypeText,
+//           ]}>CarGo Porter</Text>
+//           <Text style={[
+//             styles.rideDetailsText,
+//             selectedRideType === 'port' && styles.selectedRideDetailsText,
+//           ]}>Max 5 ton</Text>
+//           <Text style={styles.ridePriceText}>Price</Text>
+//         </View>
+//       </TouchableOpacity>
+      
+//       {/* Taxi Button */}
+//       <TouchableOpacity
+//         style={[
+//           styles.rideTypeButton,
+//           selectedRideType === 'taxi' && styles.selectedRideTypeButton,
+//         ]}
+//         onPress={() => setSelectedRideType('taxi')}
+//       >
+//         <View style={styles.rideIconContainer}>
+//           <TaxiIcon color={selectedRideType === 'taxi' ? '#FFFFFF' : '#333333'} size={24} />
+//         </View>
+//         <View style={styles.rideInfoContainer}>
+//           <Text style={[
+//             styles.rideTypeText,
+//             selectedRideType === 'taxi' && styles.selectedRideTypeText,
+//           ]}>Taxi</Text>
+//           <Text style={[
+//             styles.rideDetailsText,
+//             selectedRideType === 'taxi' && styles.selectedRideDetailsText,
+//           ]}>4 seats</Text>
+//           <Text style={styles.ridePriceText}>
+//             {selectedRideType === 'taxi' && estimatedPrice ? `₹${estimatedPrice}` : 'Price'}
+//           </Text>
+//         </View>
+//       </TouchableOpacity>
+      
+//       {/* Bike Button */}
+//       <TouchableOpacity
+//         style={[
+//           styles.rideTypeButton,
+//           selectedRideType === 'bike' && styles.selectedRideTypeButton,
+//         ]}
+//         onPress={() => setSelectedRideType('bike')}
+//       >
+//         <View style={styles.rideIconContainer}>
+//           <BikeIcon color={selectedRideType === 'bike' ? '#FFFFFF' : '#333333'} size={24} />
+//         </View>
+//         <View style={styles.rideInfoContainer}>
+//           <Text style={[
+//             styles.rideTypeText,
+//             selectedRideType === 'bike' && styles.selectedRideTypeText,
+//           ]}>Motorcycle</Text>
+//           <Text style={[
+//             styles.rideDetailsText,
+//             selectedRideType === 'bike' && styles.selectedRideDetailsText,
+//           ]}>1 person</Text>
+//           <Text style={styles.ridePriceText}>
+//             {selectedRideType === 'bike' && estimatedPrice ? `₹${estimatedPrice}` : 'Price'}
+//           </Text>
+//         </View>
 //       </TouchableOpacity>
 //     </View>
 //   );
@@ -2556,8 +2604,13 @@ export default TaxiContent;
 //       return;
 //     }
 
-//     // Get user ID or fallback to default
-//     const userId = await AsyncStorage.getItem('userId') || 'U001';
+//     // Fetch user data directly from API
+//     const backendUrl = getBackendUrl();
+//     const response = await axios.get(`${backendUrl}/api/users/profile`, {
+//       headers: { Authorization: `Bearer ${token}` }
+//     });
+    
+//     const userData = response.data;
 
 //     // Validate pickup and dropoff locations
 //     if (!pickupLocation || !dropoffLocation) {
@@ -2571,14 +2624,27 @@ export default TaxiContent;
 //       return;
 //     }
 
-//     // Generate OTP
-//     const otp = Math.floor(1000 + Math.random() * 9000).toString();
+//     // Generate OTP from customer ID (last 4 digits)
+//     const customerId = userData.customerId || userData._id;
+//     const otp = customerId.slice(-4);
 //     setBookingOTP(otp);
 
-//     // Set ride ID and status
-//     const rideId = 'RID' + Date.now();
+//     // Set ride ID with 6-digit format
+//     const rideId = 'RID' + Math.floor(100000 + Math.random() * 900000);
 //     setCurrentRideId(rideId);
 //     setRideStatus('searching');
+
+//     // Log user details
+//     console.log('📋 User Details:', {
+//       userId: userData._id,
+//       customerId: customerId,
+//       userName: userData.name,
+//       userMobile: userData.phoneNumber,
+//       userAddress: userData.address,
+//       pickup,
+//       dropoff,
+//       selectedRideType
+//     });
 
 //     // Show customized alert for ride booking
 //     Alert.alert(
@@ -2591,22 +2657,118 @@ export default TaxiContent;
 //           style: 'default',
 //         },
 //       ],
-//       { cancelable: false } // Prevents dismissing the alert by tapping outside
+//       { cancelable: false }
 //     );
 
 //     // Emit booking event via socket
 //     socket.emit('bookRide', {
 //       rideId,
-//       userId,
-//       pickup: { lat: pickupLocation.latitude, lng: pickupLocation.longitude, address: pickup },
-//       drop: { lat: dropoffLocation.latitude, lng: dropoffLocation.longitude, address: dropoff },
+//       userId: userData._id,
+//       customerId: customerId,
+//       userName: userData.name,
+//       userMobile: userData.mobile,
+//       pickup: { 
+//         lat: pickupLocation.latitude, 
+//         lng: pickupLocation.longitude, 
+//         address: pickup 
+//       },
+//       drop: { 
+//         lat: dropoffLocation.latitude, 
+//         lng: dropoffLocation.longitude, 
+//         address: dropoff 
+//       },
 //       vehicleType: selectedRideType,
+//       otp: otp
 //     });
 //   } catch (error) {
 //     console.error('Booking error:', error);
 //     Alert.alert('Booking Failed', 'An unexpected error occurred. Please try again.');
 //   }
 // };
+
+
+
+
+
+
+
+
+
+
+// // Add this state variable
+// const [userData, setUserData] = useState<{
+//   userId: string;
+//   customerId: string;
+//   userName: string;
+//   userMobile: string;
+//   userAddress: string;
+// } | null>(null);
+
+// // Add this useEffect to fetch user data
+// useEffect(() => {
+//  // In the fetchUserData function, update the field names:
+// const fetchUserData = async () => {
+//   try {
+//     const token = await AsyncStorage.getItem('authToken');
+//     if (!token) return;
+
+//     const backendUrl = getBackendUrl();
+//     const response = await axios.get(`${backendUrl}/api/users/profile`, {
+//       headers: { Authorization: `Bearer ${token}` }
+//     });
+    
+//     const userProfile = response.data;
+    
+//     // Debug: Log the entire user profile to see available fields
+//     console.log('📋 User Profile:', userProfile);
+    
+//     // Try different possible field names for mobile number
+//     const userMobile = userProfile.mobile || 
+//                        userProfile.phone || 
+//                        userProfile.phoneNumber || 
+//                        userProfile.mobileNumber || 
+//                        '';
+    
+//     setUserData({
+//       userId: userProfile._id,
+//       customerId: userProfile.customerId || userProfile._id,
+//       userName: userProfile.name || userProfile.username,
+//       userMobile: userProfile.phoneNumber,
+//       userAddress: userProfile.address || ''
+//     });
+
+//     // Save to AsyncStorage
+//     await AsyncStorage.setItem('userId', userProfile._id);
+//     await AsyncStorage.setItem('customerId', userProfile.customerId || userProfile._id);
+//     await AsyncStorage.setItem('userName', userProfile.name || userProfile.username);
+//     await AsyncStorage.setItem('userMobile', userProfile.phoneNumber);
+//     await AsyncStorage.setItem('userAddress', userProfile.address || '');
+    
+//   } catch (error) {
+//     console.error('Error fetching user data:', error);
+//     // Fallback to AsyncStorage if available
+//     const userId = await AsyncStorage.getItem('userId') || '';
+//     const customerId = await AsyncStorage.getItem('customerId') || '';
+//     const userName = await AsyncStorage.getItem('userName') || '';
+//     const userMobile = await AsyncStorage.getItem('userMobile') || '';
+//     const userAddress = await AsyncStorage.getItem('userAddress') || '';
+    
+//     setUserData({
+//       userId,
+//       customerId,
+//       userName,
+//       userMobile,
+//       userAddress
+//     });
+//   }
+// };
+
+//   fetchUserData();
+// }, []);
+
+
+
+
 
 //   useEffect(() => {
 //     const handleRideCreated = (data) => {
@@ -2685,9 +2847,9 @@ export default TaxiContent;
 //   const renderVehicleIcon = (type: 'bike' | 'taxi' | 'port', size: number = 24, color: string = '#000000') => {
 //     try {
 //       switch (type) {
-//         case 'bike': return <BikeIcon color={color} size={size} />;
+//         case 'bike': return <FontAwesome name="motorcycle" size={size} color={color} />;
 //         case 'taxi': return <TaxiIcon color={color} size={size} />;
-//         case 'port': return <PortIcon color={color} size={size} />;
+//         case 'port': return <FontAwesome5 name="truck" size={size} color={color} />;
 //         default: return <TaxiIcon color={color} size={size} />;
 //       }
 //     } catch (error) {
@@ -2881,6 +3043,8 @@ export default TaxiContent;
 //           <RideTypeSelector
 //             selectedRideType={selectedRideType}
 //             setSelectedRideType={handleRideTypeSelect}
+//             estimatedPrice={estimatedPrice}
+//             distance={distance}
 //           />
           
 //           <View style={styles.bookRideButtonContainer}>
@@ -3033,8 +3197,8 @@ export default TaxiContent;
 //   map: { ...StyleSheet.absoluteFillObject },
 //   driversCountOverlay: {
 //     position: 'absolute',
-//     top: 10,
-//     left: 10,
+//     top: 289,
+//     left: 3,
 //     backgroundColor: 'rgba(255, 255, 255, 0.9)',
 //     paddingHorizontal: 12,
 //     paddingVertical: 8,
@@ -3114,25 +3278,73 @@ export default TaxiContent;
 //   distanceTimeItem: { flexDirection: 'row', alignItems: 'center' },
 //   distanceTimeLabel: { fontSize: 14, fontWeight: '600', color: '#757575', marginLeft: 8 },
 //   distanceTimeValue: { fontSize: 14, fontWeight: 'bold', color: '#333333', marginLeft: 5 },
-//   rideTypeContainer: { flexDirection: 'row', justifyContent: 'space-between', marginHorizontal: 20, marginBottom: 15 },
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+//      rideTypeContainer: { 
+//     marginHorizontal: 20, 
+//     marginBottom: 15,
+//   },
 //   rideTypeButton: { 
-//     flexDirection: 'column', 
+//     width: '100%', 
+//     flexDirection: 'row',
 //     alignItems: 'center', 
-//     justifyContent: 'center', 
 //     backgroundColor: '#FFFFFF', 
 //     borderRadius: 12, 
-//     padding: 15, 
-//     width: '30%', 
+//     padding: 5,
+//     marginBottom: 10,
 //     elevation: 3, 
 //     shadowColor: '#000', 
 //     shadowOffset: { width: 0, height: 2 }, 
 //     shadowOpacity: 0.1, 
 //     shadowRadius: 4 
 //   },
-//   selectedRideTypeButton: { backgroundColor: '#4caf50' },
-//   rideTypeText: { marginTop: 5, fontSize: 14, fontWeight: '600', color: '#333333' },
-//   selectedRideTypeText: { color: '#FFFFFF' },
-//   bookRideButtonContainer: { marginHorizontal: 20, marginBottom: 20 },
+//   selectedRideTypeButton: { 
+//     backgroundColor: '#4caf50',
+//     borderWidth: 2,
+//     borderColor: '#4caf50'
+//   },
+//   rideIconContainer: {
+//     marginRight: 15,
+//     justifyContent: 'center',
+//     alignItems: 'center'
+//   },
+//   rideInfoContainer: {
+//     flex: 1,
+//   },
+//   rideTypeText: { 
+//     fontSize: 16, 
+//     fontWeight: '600', 
+//     color: '#333333',
+//     marginBottom: 4,
+//   },
+//   selectedRideTypeText: { 
+//     color: '#FFFFFF' 
+//   },
+//   rideDetailsText: { 
+//     fontSize: 14, 
+//     color: '#757575',
+//     marginBottom: 6,
+//   },
+//   selectedRideDetailsText: {
+//     color: '#FFFFFF'
+//   },
+
+
+
+
+
+
+//   bookRideButtonContainer: { 
+//     marginHorizontal: 20, 
+//     marginBottom: 20 
+//   },
 //   bookRideButton: { 
 //     paddingVertical: 15, 
 //     borderRadius: 12, 
@@ -3145,7 +3357,11 @@ export default TaxiContent;
 //   },
 //   enabledBookRideButton: { backgroundColor: '#4caf50' },
 //   disabledBookRideButton: { backgroundColor: '#BDBDBD' },
-//   bookRideButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+//   bookRideButtonText: { 
+//     color: '#FFFFFF', 
+//     fontSize: 16, 
+//     fontWeight: '600' 
+//   },
 //   errorContainer: { 
 //     marginHorizontal: 20,
 //     marginBottom: 15,
@@ -3155,7 +3371,11 @@ export default TaxiContent;
 //     borderLeftWidth: 4, 
 //     borderLeftColor: '#F44336' 
 //   },
-//   errorText: { color: '#D32F2F', fontSize: 14, textAlign: 'center' },
+//   errorText: { 
+//     color: '#D32F2F', 
+//     fontSize: 14, 
+//     textAlign: 'center' 
+//   },
 //   pricePanel: { 
 //     position: 'absolute', 
 //     bottom: 0, 
@@ -3188,7 +3408,7 @@ export default TaxiContent;
 //   },
 //   priceDetailsContainer: { 
 //     flexDirection: 'row', 
-//     marginBottom: 15 
+//     marginBottom: 8 
 //   },
 //   driverMarkerContainer: {
 //     alignItems: 'center',
@@ -3196,19 +3416,21 @@ export default TaxiContent;
 //   },
 //   vehicleIconContainer: {
 //     position: 'absolute',
+//     top:'-50',
+//     left:'108',
 //     backgroundColor: '#4CAF50',
-//     borderRadius: 15,
-//     width: 30,
-//     height: 30,
+//     borderRadius: 95,
+//     width: 40,
+//     height: 40,
 //     alignItems: 'center',
 //     justifyContent: 'center',
 //     marginTop: -15,
 //   },
 //   redDotMarker: {
-//     width: 24,
-//     height: 24,
+//     width: 19,
+//     height: 19,
 //     borderRadius: 6,
-//     backgroundColor: '#200808ff',
+//     backgroundColor: '#19d522ff',
 //   },
 //   priceInfoContainer: { 
 //     flex: 1 
@@ -3226,7 +3448,7 @@ export default TaxiContent;
 //     flex: 1 
 //   },
 //   priceValue: { 
-//     fontSize: 14, 
+//     fontSize: 13, 
 //     fontWeight: 'bold', 
 //     color: '#333333', 
 //     flex: 2, 
@@ -3234,7 +3456,6 @@ export default TaxiContent;
 //   },
 //   returnTripRow: { 
 //     flexDirection: 'row', 
-
 //     justifyContent: 'space-between', 
 //     alignItems: 'center', 
 //     marginTop: 5 
@@ -3374,3 +3595,42 @@ export default TaxiContent;
 // });
 
 // export default TaxiContent;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
